@@ -103,12 +103,6 @@
 go test ./...
 ```
 
-### Покрытие тестами
-Для генерации отчета о покрытии тестами:
-```bash
-go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
-```
-
 ## Нагрузочное тестирование
 Я использовал `hey` для нагрузочного тестирования. Вы можете установить его через `go install github.com/rakyll/hey@latest`.
 
