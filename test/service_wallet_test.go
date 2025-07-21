@@ -167,3 +167,67 @@ func TestDeposit_Retry(t *testing.T) {
 	assert.True(t, balance.Equal(decimal.NewFromInt(100)))
 	assert.False(t, created)
 }
+
+func TestWithdraw_InvalidAmount(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRepo := NewMockWalletRepository(ctrl)
+	svc := service.NewWalletService(mockRepo, testLogger)
+
+	walletID := uuid.New()
+
+	balance, err := svc.Withdraw(context.Background(), walletID, decimal.Zero)
+	assert.ErrorIs(t, err, repository.ErrInvalidAmount)
+	assert.True(t, balance.IsZero())
+
+	balance, err = svc.Withdraw(context.Background(), walletID, decimal.NewFromInt(-10))
+	assert.ErrorIs(t, err, repository.ErrInvalidAmount)
+	assert.True(t, balance.IsZero())
+}
+
+func TestWithdraw_Retry(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRepo := NewMockWalletRepository(ctrl)
+	svc := service.NewWalletService(mockRepo, testLogger)
+
+	walletID := uuid.New()
+	amount := decimal.NewFromInt(50)
+	negAmount := amount.Neg()
+
+	retryErr := &pgconn.PgError{Code: "40P01", Message: "deadlock detected"}
+
+	gomock.InOrder(
+		mockRepo.EXPECT().
+			UpdateBalance(gomock.Any(), walletID, negAmount, "WITHDRAW").
+			Return(decimal.Zero, false, retryErr),
+		mockRepo.EXPECT().
+			UpdateBalance(gomock.Any(), walletID, negAmount, "WITHDRAW").
+			Return(decimal.NewFromInt(50), false, nil),
+	)
+
+	balance, err := svc.Withdraw(context.Background(), walletID, amount)
+	assert.NoError(t, err)
+	assert.True(t, balance.Equal(decimal.NewFromInt(50)))
+}
+
+func TestGetBalance_OtherError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRepo := NewMockWalletRepository(ctrl)
+	svc := service.NewWalletService(mockRepo, testLogger)
+
+	walletID := uuid.New()
+	someError := assert.AnError
+
+	mockRepo.EXPECT().
+		GetBalance(gomock.Any(), walletID).
+		Return(decimal.Zero, someError)
+
+	balance, err := svc.GetBalance(context.Background(), walletID)
+	assert.ErrorIs(t, err, someError)
+	assert.True(t, balance.IsZero())
+}
