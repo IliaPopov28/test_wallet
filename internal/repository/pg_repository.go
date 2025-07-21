@@ -66,16 +66,23 @@ func (r *WalletPGRepository) UpdateBalance(
 		if opType != "DEPOSIT" {
 			return decimal.Zero, false, ErrWalletNotFound
 		}
-		// UPSERT для создания кошелька, если его нет
-		_, err := tx.Exec(ctx, "INSERT INTO wallets (id, balance) VALUES ($1, 0) ON CONFLICT DO NOTHING", walletID)
-		if err != nil {
+
+		var insertedID uuid.UUID
+		err := tx.QueryRow(ctx, `
+            INSERT INTO wallets (id, balance) VALUES ($1, 0)
+            ON CONFLICT (id) DO NOTHING
+            RETURNING id`, walletID).Scan(&insertedID)
+		if err != nil && err != pgx.ErrNoRows {
 			r.logger.Error("Failed to upsert wallet",
 				slog.String("wallet_id", walletID.String()),
 				slog.Any("err", err),
 			)
 			return decimal.Zero, false, err
 		}
-		// Теперь повторно читаем баланс (строка уже точно есть)
+		if err == nil {
+			created = true
+		}
+
 		err = tx.QueryRow(ctx, "SELECT balance FROM wallets WHERE id = $1 FOR UPDATE", walletID).Scan(&currentBalance)
 		if err != nil {
 			r.logger.Error("Failed to select wallet after upsert",
@@ -84,7 +91,6 @@ func (r *WalletPGRepository) UpdateBalance(
 			)
 			return decimal.Zero, false, err
 		}
-		created = true
 	} else if err != nil {
 		r.logger.Error("Failed to select wallet for update",
 			slog.String("wallet_id", walletID.String()),
