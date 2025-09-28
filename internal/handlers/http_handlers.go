@@ -33,6 +33,9 @@ func (h *WalletHTTPHandler) RegisterRoutes(r *gin.Engine) {
 		v1.POST("/wallet", h.HandleWalletOperation)
 		v1.GET("/wallets/:wallet_id", h.HandleGetBalance)
 	}
+	r.GET("/ping", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
 }
 
 func (h *WalletHTTPHandler) HandleWalletOperation(c *gin.Context) {
@@ -44,6 +47,7 @@ func (h *WalletHTTPHandler) HandleWalletOperation(c *gin.Context) {
 
 	if req.Amount.Cmp(decimal.Zero) <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "amount must be > 0"})
+		return
 	}
 
 	switch req.OperationType {
