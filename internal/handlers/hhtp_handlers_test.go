@@ -110,7 +110,7 @@ func TestIntegration_InvalidAmount(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Contains(t, w.Body.String(), "amount must not be zero")
+	assert.Contains(t, w.Body.String(), "amount must be \\u003e 0")
 }
 
 func TestIntegration_InvalidUUID(t *testing.T) {
