@@ -36,6 +36,9 @@ func main() {
 		os.Exit(1)
 	}
 	poolConfig.MaxConns = int32(cfg.DBMaxConns)
+	poolConfig.MinConns = int32(cfg.DBMinConns)
+	poolConfig.MaxConnIdleTime = cfg.DBMaxConnIdleTime
+	poolConfig.MaxConnLifetime = cfg.DBMaxConnLifetime
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		logger.Error("failed to connect to database", "err", err)
@@ -44,7 +47,7 @@ func main() {
 	defer pool.Close()
 
 	repo := repository.NewWalletPGRepository(pool, logger)
-	svc := service.NewWalletService(repo, logger)
+	svc := service.NewWalletService(repo, logger, cfg.MaxRetries)
 	hanlder := handlers.NewWalletHTTPHandler(svc)
 
 	r := gin.Default()
@@ -71,7 +74,7 @@ func main() {
 	logger.Info("Shutting down server")
 
 	// logfatal
-	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
+	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancelShutdown()
 	if err := srv.Shutdown(ctxShutdown); err != nil {
 		logger.Error("Server forced to shutdown", "err", err)

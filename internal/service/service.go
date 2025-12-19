@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"test_wallet/internal/models"
 	"test_wallet/internal/repository"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 //go:generate mockgen -source=service.go -destination=../../test/mock_wallet_repository.go -package=test WalletRepository
 
 type WalletRepository interface {
-	UpdateBalance(ctx context.Context, walletID uuid.UUID, amount decimal.Decimal, opType string) (decimal.Decimal, bool, error)
+	UpdateBalance(ctx context.Context, walletID uuid.UUID, amount decimal.Decimal, opType models.OperationType) (decimal.Decimal, bool, error)
 	GetBalance(ctx context.Context, walletID uuid.UUID) (decimal.Decimal, error)
 }
 
@@ -25,18 +26,21 @@ type WalletService struct {
 	maxRetries int
 }
 
-func NewWalletService(repo WalletRepository, logger *slog.Logger) *WalletService {
+func NewWalletService(repo WalletRepository, logger *slog.Logger, maxRetries int) *WalletService {
 	return &WalletService{
 		repo:       repo,
 		logger:     logger,
-		maxRetries: 3, // можно вынести в .env
+		maxRetries: maxRetries,
 	}
 }
 
 func (s *WalletService) Deposit(ctx context.Context, walletID uuid.UUID, amount decimal.Decimal) (decimal.Decimal, bool, error) {
+	if amount.IsZero() || amount.IsNegative() {
+		return decimal.Zero, false, repository.ErrInvalidAmount
+	}
 	var lastErr error
 	for i := 0; i < s.maxRetries; i++ {
-		balance, created, err := s.repo.UpdateBalance(ctx, walletID, amount, "DEPOSIT")
+		balance, created, err := s.repo.UpdateBalance(ctx, walletID, amount, models.OperationDeposit)
 		if err == nil {
 			return balance, created, nil
 		}
@@ -83,15 +87,11 @@ func (s *WalletService) Deposit(ctx context.Context, walletID uuid.UUID, amount 
 
 func (s *WalletService) Withdraw(ctx context.Context, walletID uuid.UUID, amount decimal.Decimal) (decimal.Decimal, error) {
 	if amount.IsZero() || amount.IsNegative() {
-		s.logger.Error("Withdraw failed: amount must be positive",
-			slog.String("wallet_id", walletID.String()),
-			slog.Any("amount", amount),
-		)
 		return decimal.Zero, repository.ErrInvalidAmount
 	}
 	var lastErr error
 	for i := 0; i < s.maxRetries; i++ {
-		balance, _, err := s.repo.UpdateBalance(ctx, walletID, amount.Neg(), "WITHDRAW")
+		balance, _, err := s.repo.UpdateBalance(ctx, walletID, amount.Neg(), models.OperationWithdraw)
 		if err == nil {
 			return balance, nil
 		}

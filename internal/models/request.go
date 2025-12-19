@@ -7,6 +7,6 @@ import (
 
 type WalletRequest struct {
 	WalletID      uuid.UUID       `json:"walletId" binding:"required"`
-	OperationType string          `json:"operationType" binding:"required,oneof=DEPOSIT WITHDRAW"`
+	OperationType OperationType   `json:"operationType" binding:"required,oneof=DEPOSIT WITHDRAW"`
 	Amount        decimal.Decimal `json:"amount" binding:"required"`
 }

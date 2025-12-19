@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"test_wallet/internal/models"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgconn"
@@ -35,7 +36,7 @@ func (r *WalletPGRepository) UpdateBalance(
 	ctx context.Context,
 	walletID uuid.UUID,
 	amount decimal.Decimal,
-	opType string,
+	opType models.OperationType,
 ) (decimal.Decimal, bool, error) {
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -57,13 +58,9 @@ func (r *WalletPGRepository) UpdateBalance(
 	var currentBalance decimal.Decimal
 	err = tx.QueryRow(ctx, "SELECT balance FROM wallets WHERE id = $1 FOR UPDATE", walletID).Scan(&currentBalance)
 
-	if amount.IsZero() {
-		return currentBalance, false, ErrInvalidAmount
-	}
-
 	created := false
 	if err == pgx.ErrNoRows {
-		if opType != "DEPOSIT" {
+		if opType != models.OperationDeposit {
 			return decimal.Zero, false, ErrWalletNotFound
 		}
 
@@ -113,16 +110,16 @@ func (r *WalletPGRepository) UpdateBalance(
 		return currentBalance, false, err
 	}
 
-	/* _, err = tx.Exec(ctx, "INSERT INTO transactions (wallet_id, type, amount) VALUES ($1, $2, $3)", walletID, opType, amount)
-	 if err != nil {
-	 	r.logger.Error("Failed to insert transaction",
-	 		slog.String("wallet_id", walletID.String()),
-	 		slog.String("operation", opType),
-	 		slog.Any("amount", amount),
-	 		slog.Any("err", err),
-	 	)
-	 	return currentBalance, false, err
-	}*/
+	_, err = tx.Exec(ctx, "INSERT INTO transactions (wallet_id, type, amount) VALUES ($1, $2, $3)", walletID, opType, amount)
+	if err != nil {
+		r.logger.Error("Failed to insert transaction",
+			slog.String("wallet_id", walletID.String()),
+			slog.String("operation", string(opType)),
+			slog.Any("amount", amount),
+			slog.Any("err", err),
+		)
+		return currentBalance, false, err
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		r.logger.Error("Failed to commit transaction",

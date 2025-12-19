@@ -19,3 +19,10 @@ type Transaction struct {
 	Amount    decimal.Decimal `db:"amount"`
 	CreatedAt time.Time       `db:"created_at"`
 }
+
+type OperationType string
+
+const (
+	OperationDeposit  OperationType = "DEPOSIT"
+	OperationWithdraw OperationType = "WITHDRAW"
+)

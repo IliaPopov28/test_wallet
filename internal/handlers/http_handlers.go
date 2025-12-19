@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"test_wallet/internal/models"
 	"test_wallet/internal/repository"
@@ -51,16 +52,10 @@ func (h *WalletHTTPHandler) HandleWalletOperation(c *gin.Context) {
 	}
 
 	switch req.OperationType {
-	case "DEPOSIT":
+	case models.OperationDeposit:
 		balance, created, err := h.service.Deposit(c.Request.Context(), req.WalletID, req.Amount)
 		if err != nil {
-			status := http.StatusServiceUnavailable
-			if err == repository.ErrWalletNotFound {
-				status = http.StatusNotFound
-			} else if err == repository.ErrInsufficientFunds {
-				status = http.StatusConflict
-			}
-			c.JSON(status, gin.H{"error": err.Error(), "balance": balance.String()})
+			h.handleServiceError(c, err, balance)
 			return
 		}
 		status := http.StatusOK
@@ -68,20 +63,29 @@ func (h *WalletHTTPHandler) HandleWalletOperation(c *gin.Context) {
 			status = http.StatusCreated
 		}
 		c.JSON(status, gin.H{"balance": balance.String()})
-	case "WITHDRAW":
+	case models.OperationWithdraw:
 		balance, err := h.service.Withdraw(c.Request.Context(), req.WalletID, req.Amount)
 		if err != nil {
-			status := http.StatusServiceUnavailable
-			if err == repository.ErrWalletNotFound {
-				status = http.StatusNotFound
-			} else if err == repository.ErrInsufficientFunds {
-				status = http.StatusConflict
-			}
-			c.JSON(status, gin.H{"error": err.Error(), "balance": balance.String()})
+			h.handleServiceError(c, err, balance)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"balance": balance.String()})
 	}
+}
+
+func (h *WalletHTTPHandler) handleServiceError(c *gin.Context, err error, balance decimal.Decimal) {
+	status := http.StatusServiceUnavailable
+	if errors.Is(err, repository.ErrWalletNotFound) {
+		status = http.StatusNotFound
+	} else if errors.Is(err, repository.ErrInsufficientFunds) {
+		status = http.StatusConflict
+	}
+
+	response := gin.H{"error": err.Error()}
+	if !balance.IsZero() {
+		response["balance"] = balance.String()
+	}
+	c.JSON(status, response)
 }
 
 func (h *WalletHTTPHandler) HandleGetBalance(c *gin.Context) {
@@ -93,11 +97,7 @@ func (h *WalletHTTPHandler) HandleGetBalance(c *gin.Context) {
 	}
 	balance, err := h.service.GetBalance(c.Request.Context(), walletID)
 	if err != nil {
-		status := http.StatusServiceUnavailable
-		if err == repository.ErrWalletNotFound {
-			status = http.StatusNotFound
-		}
-		c.JSON(status, gin.H{"error": err.Error()})
+		h.handleServiceError(c, err, decimal.Zero)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"balance": balance.String()})
